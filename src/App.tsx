@@ -8,6 +8,7 @@ import { useSelectMode } from "./hooks/useSelectMode";
 import { useOfflineSync } from "./hooks/useOfflineSync";
 import { useAuth, type AuthStatus } from "./hooks/useAuth";
 import { authApi } from "./api/authApi";
+import { driveApi } from "./api/driveApi";
 import type { NotesMode } from "./api/notesRepo";
 import { migrateLocalNotesToServer } from "./utils/migrateLocalNotes";
 import { DriveCallbackScreen } from "./components/auth/DriveCallbackScreen";
@@ -96,6 +97,30 @@ function Workspace({ authStatus }: { authStatus: AuthStatus }) {
       }
     })();
   }, [authStatus]);
+
+  // Kenh thu 3 cua "Debounce Sync": flush dong bo NGAY khi nguoi dung dong
+  // tab/roi trang (chi co tac dung o Server Mode - Local Mode khong co gi de
+  // flush len Drive). Dung ca 'pagehide' LAN 'visibilitychange' (kiem tra
+  // document.visibilityState === "hidden") de bao phu nhieu tinh huong nhat:
+  // 'pagehide' bat duoc dong tab/dong trinh duyet, 'visibilitychange' con bat
+  // duoc them ca truong hop chuyen sang tab/app khac (mobile OS hay tam dung
+  // tab an, khong phai luc nao cung bat 'pagehide' kip truoc khi bi kill).
+  useEffect(() => {
+    if (mode !== "server") return;
+
+    const flush = () => driveApi.flushOnUnload();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [mode]);
 
   // DUY NHAT 1 instance useOfflineSync o cap cao nhat nay - xem giai thich
   // trong useAutoSave.ts ve ly do khong duoc goi hook nay o nhieu noi.
